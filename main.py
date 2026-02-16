@@ -214,7 +214,7 @@ with st.sidebar:
     uploaded_payrolls = st.file_uploader("Nóminas (Auditoría Anual)", type=['pdf'], accept_multiple_files=True)
     
     if uploaded_payrolls:
-        if st.button("🕵️ Auditoría Anual (Detectar Pagos)"):
+        if st.button("🔍 Analizar Nóminas"):
              with st.spinner("Analizando historial de nóminas..."):
                 try:
                     # Importamos la nueva función
@@ -453,7 +453,11 @@ elif st.session_state.step == 2:
                 info = st.session_state.detected_shifts.get(code, {})
                 es_vac = info.get('is_vacation', False) or code == 'V'
                 val_h = info.get('hours', 0.0)
-                start_t = info.get('start'); end_t = info.get('end'); desc = info.get('description', '')
+                
+                # Normalizar keys de tiempo
+                start_t = info.get('start_time') or info.get('start')
+                end_t = info.get('end_time') or info.get('end')
+                desc = info.get('description', '')
                 
                 # --- 1. Cabecera del Turno con Detalles Horarios ---
                 # Si es Vacaciones (código V), mostramos los rangos
@@ -690,8 +694,12 @@ elif st.session_state.step == 3:
                 cod = row['Codigo']
                 debt = row['Deuda_Descanso_Horas']
                 info = detected_info.get(cod, {})
-                start = info.get('start', '?')
-                end = info.get('end', '?')
+                # Recuperar horas (Prioridad: DataFrame > Info > "?")
+                start = row.get('Hora_Inicio')
+                if not start: start = info.get('start_time') or info.get('start', '?')
+                
+                end = row.get('Hora_Fin')
+                if not end: end = info.get('end_time') or info.get('end', '?')
                 
                 # Formato: 📅 Día DD | ⏱️ HH:MM-HH:MM | ❌ Deuda: -X.XX h
                 # Estilo Neutro (NEGRO PURO) + ROJO SOLO EN LA DEUDA
