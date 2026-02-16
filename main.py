@@ -1,4 +1,5 @@
 import streamlit as st
+
 import pandas as pd
 from datetime import date, datetime, time, timedelta
 
@@ -13,7 +14,6 @@ st.set_page_config(page_title="Informe Jurídico - Reclamación Turnos", page_ic
 # --- ESTILOS CSS PREMIUM (DARK + WHITE CARDS) ---
 st.markdown("""
     <style>
-    /* Ocultar menú default */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
@@ -38,6 +38,57 @@ st.markdown("""
         border: 1px solid #41444e;
     }
     
+    /* FORCE BOLD ON ALL TEXT INSIDE CARDS/EXPANDERS */
+    /* Target Streamlit Expanders internals explicitly */
+    div[data-testid="stExpander"] p,
+    div[data-testid="stExpander"] span,
+    div[data-testid="stExpander"] div,
+    div[data-testid="stExpander"] label {
+        font-weight: 700 !important;
+        color: #333333 !important;
+    }
+    
+    /* FIX INPUTS VISIBILITY: Force White BG + Black Text */
+    div[data-baseweb="input"] {
+        background-color: #ffffff !important;
+        border: 1px solid #ccc !important;
+    }
+    input {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Arreglar Cuadro Azul (st.info): Texto Blanco */
+    div[data-testid="stAlert"] {
+        color: #FFFFFF !important;
+    }
+    div[data-testid="stAlert"] p, div[data-testid="stAlert"] span {
+        color: #FFFFFF !important;
+    }
+    
+    /* Arreglar Cabecera Expander: Fondo Claro, Texto Negro */
+    div[data-testid="stExpander"] > details > summary {
+        background-color: #f0f2f6 !important; /* Gris muy claro */
+        color: #000000 !important;
+        font-weight: bold !important;
+    }
+    /* Icono de la flechita del expander en negro */
+    div[data-testid="stExpander"] > details > summary svg {
+        fill: #000000 !important;
+        color: #000000 !important;
+    }
+
+    /* Etiquetas (Labels) en Negro */
+    label, .st-emotion-cache-1629p8f {
+        color: #000000 !important;
+        font-weight: bold !important;
+    }
+    
+    .card, .card * {
+        font-weight: 700 !important;
+        color: #333333 !important;
+    }
+    
     /* Métricas Grandes - BLANCO */
     .metric-container {
         text-align: center;
@@ -47,14 +98,19 @@ st.markdown("""
         box_shadow: 0 2px 4px rgba(0,0,0,0.2);
         border-left: 5px solid #4dabf7;
     }
-    .metric-value { font-size: 2.5rem; font-weight: 800; color: #333333; } /* Texto Oscuro */
-    .metric-label { font-size: 0.9rem; color: #666666; text-transform: uppercase; letter-spacing: 1px; } /* Gris Oscuro */
+    
+    .metric-container * {
+        font-weight: 700 !important;
+    }
+
+    .metric-value { font-size: 2.5rem; color: #333333 !important; } /* Texto Oscuro */
+    .metric-label { font-size: 0.9rem; color: #666666 !important; text-transform: uppercase; letter-spacing: 1px; } /* Gris Oscuro */
     
     /* Colores High Contrast (Para fondo BLANCO) */
-    .text-success { color: #28a745 !important; }
-    .text-danger { color: #dc3545 !important; }
-    .text-warning { color: #ffc107 !important; }
-    .text-primary { color: #007bff !important; }
+    .text-success { color: #28a745 !important; font-weight: 800 !important; }
+    .text-danger { color: #dc3545 !important; font-weight: 800 !important; }
+    .text-warning { color: #ffc107 !important; font-weight: 800 !important; }
+    .text-primary { color: #007bff !important; font-weight: 800 !important; }
     
     /* Alertas Dark (Mantener estéticas) */
     .stAlert { background-color: #262730; border: 1px solid #444; color: #eee; }
@@ -63,7 +119,7 @@ st.markdown("""
     .stButton>button {
         width: 100%;
         border-radius: 8px;
-        font-weight: 600;
+        font-weight: 700 !important;
         transition: all 0.2s;
         background-color: #1f77b4;
         color: white;
@@ -86,17 +142,13 @@ st.markdown("""
         color: #000000 !important;
         padding: 10px;
         border-radius: 5px;
-        font-weight: 600;
+        font-weight: 700 !important; /* BOLD */
         cursor: pointer;
     }
     details[open] summary {
         border-bottom: 1px solid #e0e0e0;
         border-bottom-left-radius: 0;
         border-bottom-right-radius: 0;
-    }
-    details > div {
-        padding: 10px;
-        color: #000000 !important;
     }
     
     /* FIX: Sidebar Festivos High Contrast */
@@ -106,9 +158,14 @@ st.markdown("""
         border-radius: 8px; 
         border: 1px solid #d1d5db;
     }
+    
+    .holiday-box * {
+        font-weight: 700 !important;
+        color: #000000 !important;
+    }
+
     .holiday-item {
         color: #000000 !important;
-        font-weight: 600;
         margin-bottom: 6px;
         border-bottom: 1px solid #f0f0f0;
         padding-bottom: 4px;
@@ -139,7 +196,7 @@ def reset_app():
 # ==========================================
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
-    st.title("Reclamación AI")
+    st.title("Reclamación AI (VERSION ACTUALIZADA)")
     st.caption("Sistema de Análisis Jurídico v2.5")
     st.markdown("---")
     
@@ -274,7 +331,6 @@ with st.sidebar:
     # ---------------------------------------------------------
     # Verificar si hay horas nocturnas en los turnos vs nómina
     hay_horas_nocturnas = False
-    hay_festivos_trabajados = False # Placeholder para futuro
     
     if 'local_mapping' in locals():
         for code, info in local_mapping.items():
@@ -669,6 +725,12 @@ elif st.session_state.step == 3:
     with col_d2:
         # Recuperar festivos de la sesión
         current_holidays = st.session_state.detected_holidays
+        
+        # Recuperar metadatos para informe
+        p_data_final = st.session_state.get('payroll_data', {})
+        worker_name = p_data_final.get('worker', st.session_state.get('auto_worker_name', 'Trabajador'))
+        company_name = p_data_final.get('company', st.session_state.get('auto_company_name', 'Empresa'))
+        
         excel_data = generate_excel(df, detected_info, prices, current_holidays, worker_name, company_name)
         st.download_button(
             "📥 Descargar Informe Jurídico (Excel)",
