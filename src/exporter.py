@@ -64,34 +64,122 @@ def generate_excel(df, shift_mapping, prices, holidays, worker_name="N/D", compa
         ws_summary[f'B{row}'].font = font_bold
         ws_summary[f'C{row}'].alignment = Alignment(horizontal='left')
         
-    # 2. Desglose de Conceptos Detectados
+    # 2. CÁLCULO DEL PRECIO HORA ORDINARIA (FÓRMULA VISUAL)
+    # Según imagen: (Base + Antigüedad + Plus) x 15 / 1776
+    
+    # Extraer valores
+    base = prices.get('base_salary', 0.0)
+    antiguedad = prices.get('seniority', 0.0)
+    plus = prices.get('plus_agreement', 0.0)
+    
+    # Calcular totales internos para consistencia (aunque el usuario pase el precio ya calculado, 
+    # aquí mostramos el desglose "teórico" de su fórmula anual)
+    total_mensual = base + antiguedad + plus
+    total_anual = total_mensual * 15
+    divisor_horas = 1776
+    precio_hora_formula = total_anual / divisor_horas if divisor_horas else 0.0
+    
+    # Cabecera Sección
     ws_summary.merge_cells('B9:E9')
-    ws_summary['B9'] = "CONCEPTOS SALARIALES DETECTADOS (MEDIA MENSUAL)"
+    ws_summary['B9'] = "CÁLCULO DEL PRECIO HORA ORDINARIA"
     ws_summary['B9'].font = font_subtitle
     ws_summary['B9'].alignment = align_center
-    ws_summary['B9'].fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type='solid')
     ws_summary['B9'].border = border_thin
     
-    concepts = [
-        ("Salario Base", prices.get('base_salary', 0)),
-        ("Plus Convenio", prices.get('plus_agreement', 0)),
-        ("Antigüedad", prices.get('seniority', 0)),
-        ("Nocturnidad (Audit)", prices.get('nocturnidad', 0)),
-        ("Dietas (Audit)", prices.get('dietas', 0)),
+    # Fila Fórmula Texto
+    # "(1253.26 + 100.26 + 0.00) x 15"
+    formula_text = f"({base:.2f} + {antiguedad:.2f} + {plus:.2f}) x 15"
+    ws_summary.merge_cells('B11:E11')
+    ws_summary['B11'] = formula_text
+    ws_summary['B11'].alignment = align_center
+    ws_summary['B11'].font = Font(size=12, bold=True)
+    
+    # Fila Línea Divisoria
+    ws_summary.merge_cells('B12:E12')
+    ws_summary['B12'] = "--------------------------------------------------"
+    ws_summary['B12'].alignment = align_center
+    
+    # Fila Divisor
+    ws_summary.merge_cells('B13:E13')
+    ws_summary['B13'] = str(divisor_horas)
+    ws_summary['B13'].alignment = align_center
+    ws_summary['B13'].font = Font(size=12, bold=True)
+    
+    # Resultado
+    ws_summary.merge_cells('B15:C15')
+    ws_summary['B15'] = "PRECIO HORA:"
+    ws_summary['B15'].font = font_bold
+    ws_summary['B15'].alignment = align_right
+    
+    ws_summary.merge_cells('D15:E15')
+    ws_summary['D15'] = precio_hora_formula
+    ws_summary['D15'].number_format = '#,##0.0000 €'
+    ws_summary['D15'].font = Font(color="0000FF", bold=True, size=12)
+    ws_summary['D15'].alignment = align_center
+
+    # Actualizar el precio usado para cálculos posteriores si queremos que coincida exactamente
+    # OJO: El main.py pasa 'price_normal'. Si el usuario quiere ESTA fórmula, 
+    # deberíamos usar este precio. Pero para no romper lógica externa, solo visualizamos aquí.
+    # El importe en detalle mensual usa 'precio_hora' que viene de main.
+    
+    # IMPORTANTE: Definimos precio_hora aquí para que el loop mensual lo use
+    precio_hora = precio_hora_formula
+    
+    # 3. RESUMEN DE CANTIDADES (CABECERA)
+    ws_summary.merge_cells('B18:E18')
+    ws_summary['B18'] = "RESUMEN DE CANTIDADES A RECLAMAR"
+    ws_summary['B18'].font = font_subtitle
+    ws_summary['B18'].fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type='solid')
+    ws_summary['B18'].border = border_thin
+    
+    # Totales
+    total_deuda_descansos = 0.0 # Se calculará sumando el DF, o pasamos el total en 'prices'?
+    # En la versión actual codigo, prices tiene 'val_extra_pay'. 
+    # El total de descansos se calcula en Main. Deberíamos pasarlo o recalcularlo aquí.
+    # Recalculamos rápido del DF para ser precisos
+    total_horas_deuda = df['Deuda_Descanso_Horas'].sum()
+    # Usamos el PRECIO DE FÓRMULA (1776)
+    importe_descansos = total_horas_deuda * precio_hora 
+    reclamacion_extra = prices.get('val_extra_pay', 0.0)
+    total_final = importe_descansos + reclamacion_extra
+    
+    # Filas Resumen
+    rows_summary = [
+        ("Total Horas de Descanso No Disfrutadas:", f"{total_horas_deuda:.2f} h"),
+        ("Importe Reclamación Descansos:", importe_descansos),
+        ("Reclamación 3ª Paga Extra:", reclamacion_extra)
     ]
     
-    curr = 11
-    for name, val in concepts:
-        ws_summary[f'B{curr}'] = name
-        ws_summary[f'C{curr}'] = f"{val:.2f} €"
+    curr = 20
+    for label, val in rows_summary:
+        ws_summary.merge_cells(f'B{curr}:C{curr}')
+        ws_summary[f'B{curr}'] = label
+        
+        ws_summary.merge_cells(f'D{curr}:E{curr}')
+        if isinstance(val, (int, float)):
+             ws_summary[f'D{curr}'] = val
+             ws_summary[f'D{curr}'].number_format = '#,##0.00 €'
+        else:
+             ws_summary[f'D{curr}'] = val
+             ws_summary[f'D{curr}'].alignment = align_right
+        
+        ws_summary[f'D{curr}'].font = font_bold
         curr += 1
-
-    # Fórmula Precio Hora
-    precio_hora = prices.get('price_normal', 0.0)
-    ws_summary[f'B{curr+1}'] = "PRECIO HORA CALCULADO:"
-    ws_summary[f'B{curr+1}'].font = font_bold
-    ws_summary[f'C{curr+1}'] = f"{precio_hora:.4f} €"
-    ws_summary[f'C{curr+1}'].font = Font(bold=True, size=12, color="0000FF")
+        
+    # TOTAL FINAL (AMARILLO)
+    curr += 1
+    ws_summary.merge_cells(f'B{curr}:C{curr}')
+    ws_summary[f'B{curr}'] = "TOTAL FINAL A RECLAMAR"
+    ws_summary[f'B{curr}'].font = Font(bold=True, color="FF0000")
+    ws_summary[f'B{curr}'].fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type='solid')
+    ws_summary[f'B{curr}'].border = border_thin
+    
+    ws_summary.merge_cells(f'D{curr}:E{curr}')
+    ws_summary[f'D{curr}'] = total_final
+    ws_summary[f'D{curr}'].number_format = '#,##0.00 €'
+    ws_summary[f'D{curr}'].font = Font(bold=True, color="FF0000", size=12)
+    ws_summary[f'D{curr}'].fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type='solid')
+    ws_summary[f'D{curr}'].border = border_thin
     
     # ---------------------------------------------------------
     # HOJA 2: DETALLE MENSUAL (BLOQUES VISUALES)
@@ -193,17 +281,32 @@ def generate_excel(df, shift_mapping, prices, holidays, worker_name="N/D", compa
                     cell.alignment = align_right
                 
                 # Colores Condicionales
-                # 6: Deuda (H), 7: Tiempo Descanso -> ROJO
+                
+                # Definir amarillo
+                yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+                
+                # 6: Deuda (H), 7: Tiempo Descanso -> ROJO si hay deuda
                 if c_idx in [6, 7] and debt_h > 0:
                     cell.fill = red_fill
                     cell.font = red_font
                     
-                # 8: Estado -> Verde (Festivo)
-                if c_idx == 8 and estado_texto == "Festivo":
-                     cell.fill = green_fill
-                     cell.font = green_font
-                     # Pintar fecha también
-                     ws_detail.cell(row=current_row, column=1).fill = green_fill
+                # ESTADOS (Verde Festivo / Amarillo Vacaciones)
+                if estado_texto == "Festivo":
+                     # Toda la fila verde en texto o solo celda estado?
+                     # Usuario dijo: "igual que festivo esta coloreado de verde... vacaciones amarillo"
+                     # Si 'Festivo' ya se coloreaba:
+                     if c_idx == 8: # Columna Estado
+                         cell.fill = green_fill
+                         cell.font = green_font
+                     if c_idx == 1: # Fecha
+                         cell.fill = green_fill
+                         
+                elif estado_texto == "Vacaciones":
+                     # Aplicar Amarillo a toda la fila o celdas clave
+                     # "vacaciones lo quiero coloreado de amarillo" -> Aplicaremos a Fecha, Codigo y Estado
+                     if c_idx in [1, 4, 8]:
+                         cell.fill = yellow_fill
+                         cell.font = Font(color="000000", bold=True) # Texto negro para contraste
 
             current_row += 1
             

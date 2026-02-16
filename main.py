@@ -1,15 +1,26 @@
 import streamlit as st
-
 import pandas as pd
 from datetime import date, datetime, time, timedelta
+import importlib
 
 # --- IMPORTS FROM UNIVERSAL PARSER ---
+import src.parser as p_module
 from src.parser import extract_data_from_pdf, extract_payroll_data, get_unique_codes, get_vacation_periods
+import src.exporter as e_module
 from src.exporter import generate_excel
+import src.calculator as c_module
 from src.calculator import calculate_nocturnal_hours
 
+# FORCING RELOAD (Critical for Dev)
+importlib.reload(p_module)
+importlib.reload(e_module)
+importlib.reload(c_module)
+# Re-import functions after reload
+from src.parser import extract_data_from_pdf, extract_payroll_data, get_unique_codes, get_vacation_periods
+from src.exporter import generate_excel
+
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Informe Jurídico - Reclamación Turnos", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="Informe Jurídico - Reclamación Turnos v3.0", page_icon="⚖️", layout="wide")
 
 # --- ESTILOS CSS PREMIUM (DARK + WHITE CARDS) ---
 st.markdown("""
@@ -196,8 +207,8 @@ def reset_app():
 # ==========================================
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=60)
-    st.title("Reclamación AI (VERSION ACTUALIZADA)")
-    st.caption("Sistema de Análisis Jurídico v2.5")
+    st.title("Reclamación AI (v3.0 FÓRMULA)")
+    st.caption("Sistema de Análisis Jurídico v3.0 - Actualizado")
     st.markdown("---")
     
     # 1.1 CARGA

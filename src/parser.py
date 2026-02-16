@@ -454,13 +454,45 @@ def parse_payroll_text(text: str, tables: List[List[List[str]]] = None) -> Dict[
                 results['company'] = line.strip()
                 break
 
+    results['paga_beneficios'] = 0.0 
+    results['month'] = None
+    
+    # Intentar detectar mes por fechas en el texto (ej: "01/03/2025", "MARZO")
+    # Buscamos rango liquidación o fechas generales
+    fechas_found = re.findall(r"(\d{2})/(\d{2})/(\d{4})", text)
+    if fechas_found:
+        # Usamos la primera fecha o la más frecuente como referencia de mes
+        # Generalmente la fecha de inicio/fin del periodo está arriba
+        try:
+             _, m, _ = fechas_found[0]
+             results['month'] = int(m)
+        except: pass
+        
     for line in lines:
         upper = line.upper()
         if "TOTAL" in upper or ("BASE" in upper and "COTIZACION" in upper): continue
         amount = extract_last_amount(line)
         if amount == 0.0: continue
-        es_paga_extra = any(x in upper for x in ["PAGA", "EXTRA", "ATRASOS", "NAVIDAD", "BENEFICIOS"])
-        if es_paga_extra: results['paga_extra'] += amount; continue 
+        
+        # Detección específica por NOMBRE
+        # Usuario: "el concepto que viene es PAGA MARZO"
+        # También mantenemos BENEFICIOS por si acaso
+        if ("PAGA" in upper and "MARZO" in upper) or "BENEFICIOS" in upper or "Bº" in upper or "BENEF." in upper:
+            results['paga_beneficios'] += amount
+            continue
+            
+        # Detección general con lógica de MES si no se detectó por nombre
+        es_paga_extra = any(x in upper for x in ["PAGA", "EXTRA", "ATRASOS", "NAVIDAD", "LIQUIDACION"])
+        
+        if es_paga_extra: 
+            # Si estamos en MARZO y es una paga extra (y no hemos sumado ya beneficios por nombre explícito)
+            # asumimos que ES la paga de beneficios/tercera.
+            if results.get('month') == 3:
+                 results['paga_beneficios'] += amount
+            else:
+                 results['paga_extra'] += amount
+            continue 
+        
         if "SALARIO BASE" in upper: results['salario_base'] = amount
         elif "ANTIGUEDAD" in upper: results['antiguedad'] = amount
         elif "CONVENIO" in upper: 
@@ -470,7 +502,7 @@ def parse_payroll_text(text: str, tables: List[List[List[str]]] = None) -> Dict[
         elif "DIETA" in upper or "MANUTENCION" in upper: results['dietas'] += amount
 
     base_calc = results['salario_base'] + results['antiguedad'] + results['plus_convenio']
-    results['tercera_paga'] = base_calc
+    results['tercera_paga'] = base_calc 
     return results
 
 def extract_payroll_data(pdf_path: str) -> Dict[str, Any]:
@@ -488,22 +520,41 @@ def extract_payroll_data(pdf_path: str) -> Dict[str, Any]:
 def analyze_annual_payroll(pdf_files: List[Any]) -> Dict[str, Any]:
     aggregated = {
         'salario_base': 0.0, 'antiguedad': 0.0, 'plus_convenio': 0.0, 
-        'nocturnidad': 0.0, 'festividad': 0.0, 'dietas': 0.0, 'total_abonado_tercera': 0.0,
+        'nocturnidad': 0.0, 'festividad': 0.0, 'dietas': 0.0, 
+        'total_abonado_tercera': 0.0, # Acumulado real pagado (Beneficios)
+        'tercera_paga_teorica': 0.0,  # Calculado: Base + Ant + Plus
         'year': datetime.now().year, 'company': "N/D", 'worker': "N/D", 
         'categoria': "N/D", 'antiguedad_fecha': "N/D"
     }
+    
+    # 1. Analizar cada nómina
     for pdf_file in pdf_files:
         data = extract_payroll_data(pdf_file)
+        
+        # Conceptos Estructurales (Maximizamos porque suelen ser fijos anuales, salvo subidas)
         if data['salario_base'] > aggregated['salario_base']: aggregated['salario_base'] = data['salario_base']
         if data['antiguedad'] > aggregated['antiguedad']: aggregated['antiguedad'] = data['antiguedad']
         if data['plus_convenio'] > aggregated['plus_convenio']: aggregated['plus_convenio'] = data['plus_convenio']
+        
+        # Conceptos Variables (Sumamos todo el año)
         aggregated['nocturnidad'] += data.get('nocturnidad', 0.0)
         aggregated['festividad'] += data.get('festividad', 0.0)
         aggregated['dietas'] += data.get('dietas', 0.0)
+        
+        # Paga Extra / Beneficios (Sumamos lo que encontremos como "Beneficios")
+        # Si la nómina es de Marzo y tiene el concepto, se suma aquí.
+        aggregated['total_abonado_tercera'] += data.get('paga_beneficios', 0.0)
+        
+        # Datos descriptivos (El último válido gana)
         if data['worker'] != "N/D": aggregated['worker'] = data['worker']
         if data['company'] != "N/D" and data['company'] not in ["CONCEPTO", "PRECIO"]:
              aggregated['company'] = data['company']
         if data['categoria'] != "N/D": aggregated['categoria'] = data['categoria']
         if data['antiguedad_fecha'] != "N/D": aggregated['antiguedad_fecha'] = data['antiguedad_fecha']
+        if data.get('year'): aggregated['year'] = data['year']
 
+    # 2. Calcular la Paga Extra Teórica (Una mensualidad completa por conceptos fijos)
+    # Usuario: "es el equivalente a una de las otras dos pagas" -> Base + Ant + Plus
+    aggregated['tercera_paga_teorica'] = aggregated['salario_base'] + aggregated['antiguedad'] + aggregated['plus_convenio']
+    
     return aggregated
